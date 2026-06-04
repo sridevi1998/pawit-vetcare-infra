@@ -18,14 +18,20 @@ Terraform foundation for serverless PawIt VetCare on Google Cloud.
 This repo currently provisions:
 
 - One Docker Artifact Registry repository: `pawit`
+- Required Google APIs for Artifact Registry, Cloud Run, Cloud SQL, Secret Manager, Service Networking, and VPC Access
+- A private VPC, private service networking range, and Serverless VPC Access connector
+- Cloud SQL PostgreSQL 17 with private IP only, automated backups, and point-in-time recovery
+- Application database/user and a generated database password
 - Service accounts for API, booking BFF, hospital, pet-parent, and marketing services
 - Secret Manager secrets for `pawit-jwt-signing-key` and `pawit-database-url`
+- A generated `pawit-database-url` secret version for the private Cloud SQL database
 - Cloud Run services for:
   - `pawit-vetcare-api`
   - `pawit-vetcare-booking-bff`
   - `pawit-vetcare-hospital`
   - `pawit-vetcare-pet-parent`
   - `pawit-vetcare-marketing`
+- A Cloud Run migration job: `pawit-vetcare-migrate`
 - Public Cloud Run invoker bindings for the service front doors
 - URL outputs for each Cloud Run service
 
@@ -53,7 +59,16 @@ allowed_origins = [
 Before applying production services, add secret versions for:
 
 - `pawit-jwt-signing-key`
-- `pawit-database-url`
+
+Terraform creates the `pawit-database-url` secret version from the private Cloud
+SQL instance, application database, and generated database password.
+
+After images are pushed and Terraform is applied, run the migration job before
+sending production traffic to the API:
+
+```sh
+gcloud run jobs execute pawit-vetcare-migrate --region asia-south1 --wait
+```
 
 ## Local Verification
 
