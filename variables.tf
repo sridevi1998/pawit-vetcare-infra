@@ -62,3 +62,50 @@ variable "api_max_instances" {
   type        = number
   default     = 10
 }
+
+variable "network_name" {
+  description = "VPC network name for private Cloud SQL and serverless egress"
+  type        = string
+  default     = "pawit-private"
+}
+
+variable "vpc_connector_cidr" {
+  description = "CIDR range for the Serverless VPC Access connector"
+  type        = string
+  default     = "10.8.0.0/28"
+}
+
+variable "database_instance_name" {
+  description = "Cloud SQL PostgreSQL instance name"
+  type        = string
+  default     = "pawit-postgres"
+}
+
+variable "database_name" {
+  description = "Application PostgreSQL database name"
+  type        = string
+  default     = "pawit"
+}
+
+variable "database_user" {
+  description = "Application PostgreSQL database user"
+  type        = string
+  default     = "pawit_app"
+}
+
+variable "database_tier" {
+  description = "Cloud SQL machine tier"
+  type        = string
+  default     = "db-custom-1-3840"
+}
+
+variable "database_availability_type" {
+  description = "Cloud SQL availability type"
+  type        = string
+  default     = "ZONAL"
+
+  validation {
+    condition     = contains(["ZONAL", "REGIONAL"], var.database_availability_type)
+    error_message = "database_availability_type must be ZONAL or REGIONAL."
+  }
+}
