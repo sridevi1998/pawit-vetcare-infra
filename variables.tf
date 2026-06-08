@@ -27,6 +27,12 @@ variable "api_image" {
   default     = null
 }
 
+variable "liquibase_image" {
+  description = "Container image for Liquibase PostgreSQL migrations. Defaults to the local Artifact Registry repository."
+  type        = string
+  default     = null
+}
+
 variable "booking_bff_image" {
   description = "Container image for pawit-vetcare-booking-bff. Defaults to the local Artifact Registry repository."
   type        = string

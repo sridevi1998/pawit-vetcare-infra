@@ -25,6 +25,7 @@ This repo currently provisions:
 - Service accounts for API, booking BFF, hospital, pet-parent, and marketing services
 - Secret Manager secrets for `pawit-jwt-signing-key` and `pawit-database-url`
 - A generated `pawit-database-url` secret version for the private Cloud SQL database
+- Generated Liquibase JDBC URL, database username, and database password secrets
 - Cloud Run services for:
   - `pawit-vetcare-api`
   - `pawit-vetcare-booking-bff`
@@ -42,7 +43,7 @@ Container images default to:
 ```
 
 Override any image with the matching Terraform variable, such as `api_image`,
-`hospital_image`, or `marketing_image`.
+`liquibase_image`, `hospital_image`, or `marketing_image`.
 
 ## Required Inputs
 
@@ -62,6 +63,13 @@ Before applying production services, add secret versions for:
 
 Terraform creates the `pawit-database-url` secret version from the private Cloud
 SQL instance, application database, and generated database password.
+
+Terraform also creates the Liquibase-specific secrets consumed by the migration
+job:
+
+- `pawit-liquibase-jdbc-url`
+- `pawit-database-username`
+- `pawit-database-password`
 
 After images are pushed and Terraform is applied, run the migration job before
 sending production traffic to the API:
