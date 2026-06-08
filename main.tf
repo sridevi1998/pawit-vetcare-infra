@@ -7,13 +7,16 @@ locals {
   artifact_registry_base = "${var.region}-docker.pkg.dev/${var.project_id}/pawit"
 
   api_image         = coalesce(var.api_image, "${local.artifact_registry_base}/pawit-vetcare-api:latest")
+  liquibase_image   = coalesce(var.liquibase_image, "${local.artifact_registry_base}/pawit-vetcare-liquibase:latest")
   booking_bff_image = coalesce(var.booking_bff_image, "${local.artifact_registry_base}/pawit-vetcare-booking-bff:latest")
   hospital_image    = coalesce(var.hospital_image, "${local.artifact_registry_base}/pawit-vetcare-hospital:latest")
   pet_parent_image  = coalesce(var.pet_parent_image, "${local.artifact_registry_base}/pawit-vetcare-pet-parent:latest")
   marketing_image   = coalesce(var.marketing_image, "${local.artifact_registry_base}/pawit-vetcare-marketing:latest")
 
-  allowed_origins = join(",", var.allowed_origins)
-  database_url    = "postgres://${var.database_user}:${urlencode(random_password.database_user.result)}@${google_sql_database_instance.postgres.private_ip_address}:5432/${var.database_name}?sslmode=disable"
+  allowed_origins       = join(",", var.allowed_origins)
+  database_url          = "postgres://${var.database_user}:${urlencode(random_password.database_user.result)}@${google_sql_database_instance.postgres.private_ip_address}:5432/${var.database_name}?sslmode=disable"
+  liquibase_jdbc_url    = "jdbc:postgresql://${google_sql_database_instance.postgres.private_ip_address}:5432/${var.database_name}"
+  liquibase_db_username = var.database_user
 }
 
 resource "google_project_service" "required" {
@@ -115,6 +118,27 @@ resource "google_secret_manager_secret" "database_url" {
   }
 }
 
+resource "google_secret_manager_secret" "liquibase_jdbc_url" {
+  secret_id = "pawit-liquibase-jdbc-url"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "database_username" {
+  secret_id = "pawit-database-username"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "database_password" {
+  secret_id = "pawit-database-password"
+  replication {
+    auto {}
+  }
+}
+
 resource "random_password" "database_user" {
   length  = 32
   special = false
@@ -165,6 +189,21 @@ resource "google_secret_manager_secret_version" "database_url" {
   secret_data = local.database_url
 }
 
+resource "google_secret_manager_secret_version" "liquibase_jdbc_url" {
+  secret      = google_secret_manager_secret.liquibase_jdbc_url.id
+  secret_data = local.liquibase_jdbc_url
+}
+
+resource "google_secret_manager_secret_version" "database_username" {
+  secret      = google_secret_manager_secret.database_username.id
+  secret_data = local.liquibase_db_username
+}
+
+resource "google_secret_manager_secret_version" "database_password" {
+  secret      = google_secret_manager_secret.database_password.id
+  secret_data = random_password.database_user.result
+}
+
 resource "google_secret_manager_secret_iam_member" "api_jwt_reader" {
   secret_id = google_secret_manager_secret.jwt_signing_key.id
   role      = "roles/secretmanager.secretAccessor"
@@ -173,6 +212,24 @@ resource "google_secret_manager_secret_iam_member" "api_jwt_reader" {
 
 resource "google_secret_manager_secret_iam_member" "api_database_reader" {
   secret_id = google_secret_manager_secret.database_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "api_liquibase_jdbc_reader" {
+  secret_id = google_secret_manager_secret.liquibase_jdbc_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "api_database_username_reader" {
+  secret_id = google_secret_manager_secret.database_username.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.api.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "api_database_password_reader" {
+  secret_id = google_secret_manager_secret.database_password.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.api.email}"
 }
@@ -255,37 +312,35 @@ resource "google_cloud_run_v2_job" "migrate" {
       }
 
       containers {
-        image = local.api_image
-
-        command = ["/app/pawit-migrate"]
-        args    = ["up"]
+        image = local.liquibase_image
+        args  = ["update"]
 
         env {
-          name  = "PAWIT_ENV"
-          value = var.environment
-        }
-
-        env {
-          name  = "PAWIT_ALLOW_DEV_AUTH"
-          value = "false"
-        }
-
-        env {
-          name = "PAWIT_JWT_SIGNING_KEY"
+          name = "LIQUIBASE_COMMAND_URL"
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.jwt_signing_key.secret_id
-              version = "latest"
+              secret  = google_secret_manager_secret.liquibase_jdbc_url.secret_id
+              version = google_secret_manager_secret_version.liquibase_jdbc_url.version
             }
           }
         }
 
         env {
-          name = "PAWIT_DATABASE_URL"
+          name = "LIQUIBASE_COMMAND_USERNAME"
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.database_url.secret_id
-              version = google_secret_manager_secret_version.database_url.version
+              secret  = google_secret_manager_secret.database_username.secret_id
+              version = google_secret_manager_secret_version.database_username.version
+            }
+          }
+        }
+
+        env {
+          name = "LIQUIBASE_COMMAND_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.database_password.secret_id
+              version = google_secret_manager_secret_version.database_password.version
             }
           }
         }
